@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0f766e">
+<link rel="manifest" href="manifest.json">
+<title>Manager FC V8</title>
+<style>
+:root{--bg:#071321;--panel:#0d1d2d;--panel2:#10283b;--line:#1e3b50;--text:#eaf3f7;--muted:#91a8b6;--accent:#20c997;--warn:#ffd166;--danger:#ff6b6b}
+*{box-sizing:border-box} body{margin:0;background:linear-gradient(135deg,#06111e,#0a2030);color:var(--text);font-family:Inter,system-ui,Arial,sans-serif}
+button{border:0;border-radius:10px;padding:11px 15px;background:var(--accent);color:#062019;font-weight:800;cursor:pointer}
+button.secondary{background:#17364b;color:var(--text)} button.danger{background:var(--danger);color:#250707}
+button:disabled{opacity:.45;cursor:not-allowed}
+header{padding:18px 20px;border-bottom:1px solid var(--line);background:#071321e8;position:sticky;top:0;z-index:5;backdrop-filter:blur(8px)}
+h1{margin:0;font-size:25px}.sub{color:var(--muted);font-size:13px;margin-top:3px}
+.wrap{max-width:1250px;margin:auto;padding:18px}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.card{background:linear-gradient(180deg,var(--panel),#0a1927);border:1px solid var(--line);border-radius:14px;padding:15px}
+.label{font-size:12px;color:var(--muted)}.value{font-size:22px;font-weight:900;margin-top:4px}
+main{display:grid;grid-template-columns:1.2fr .8fr;gap:14px;margin-top:14px}
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+h2{font-size:17px;margin:0 0 12px}.actions{display:flex;gap:8px;flex-wrap:wrap}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:8px 6px;border-bottom:1px solid #173143;text-align:left}th{color:var(--muted)}
+.mine{font-weight:900;background:#10352f}.muted{color:var(--muted)}.good{color:var(--accent)}.warn{color:var(--warn)}
+.log{max-height:240px;overflow:auto}.log p{margin:7px 0;padding-bottom:7px;border-bottom:1px solid #173143;font-size:13px}
+.fixture{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #173143}.fixture strong{min-width:75px}
+.modal{position:fixed;inset:0;background:#000b;display:none;align-items:center;justify-content:center;padding:18px;z-index:20}.modal.show{display:flex}
+.dialog{max-width:760px;width:100%;max-height:92vh;overflow:auto;background:#0b1b2a;border:1px solid #2b536b;border-radius:16px;padding:18px;box-shadow:0 20px 80px #000}
+.opinions{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin:12px 0}.op{background:#102a3d;border:1px solid #1d465d;border-radius:9px;padding:9px;font-size:12px}.op b{display:block;margin-bottom:4px;color:#9fe8d2}
+.options{display:grid;gap:8px}.choice{text-align:left;background:#15364a;color:var(--text);border:1px solid #27546b}.choice:hover{background:#1b465d}
+@media(max-width:900px){main{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,1fr)}.opinions{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.grid{grid-template-columns:1fr 1fr}.wrap{padding:10px}.value{font-size:18px}}
+</style>
+</head>
+<body>
+<header><h1>⚽ Manager FC <span class="good">V8</span></h1><div class="sub">38 rodadas • 20 clubes • decisões obrigatórias • calendário fixo</div></header>
+<div class="wrap">
+<div class="grid" id="stats"></div>
+<main>
+<section>
+<h2>Controle da temporada</h2>
+<div class="actions">
+<button id="advanceBtn" onclick="advanceDay()">Avançar 1 dia</button>
+<button onclick="playRound()">Jogar rodada</button>
+<button class="secondary" onclick="showCareer()">Carreira</button>
+<button class="danger" onclick="resetGame()">Nova carreira</button>
+</div>
+<div id="next" style="margin-top:13px"></div>
+<div id="lastRound" style="margin-top:13px"></div>
+</section>
+<section><h2>Elenco</h2><div id="squad"></div></section>
+<section><h2>Classificação</h2><div id="table"></div></section>
+<section><h2>Histórico</h2><div class="log" id="log"></div></section>
+</main>
+</div>
+
+<div class="modal" id="decisionModal"><div class="dialog">
+<h2 id="dTitle">Decisão do clube</h2><p id="dText"></p>
+<div class="opinions" id="opinions"></div>
+<div class="options" id="options"></div>
+</div></div>
+
+<div class="modal" id="careerModal"><div class="dialog">
+<h2>🏆 Fim da temporada</h2><div id="careerText"></div>
+<div class="actions" style="margin-top:15px"><button onclick="resetGame()">Começar nova carreira</button></div>
+</div></div>
+
+<script>
+const CLUBS=["Manager FC","Flamengo","Palmeiras","São Paulo","Corinthians","Santos","Vasco","Fluminense","Botafogo","Grêmio","Internacional","Cruzeiro","Atlético-MG","Bahia","Fortaleza","Athletico-PR","Bragantino","Ceará","Sport","Mirassol"];
+const GAME_DAYS={1:[5,15,25],2:[4,14,24],3:[6,16,26],4:[5,15,25],5:[4,14,24],6:[6,16,26],7:[5,15,25],8:[4,14,24],9:[6,16,26],10:[5,15,25],11:[4,11,21,28],12:[5,12,22,29]};
+const MONTHS=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+const TRANSFER_MONTHS=[1,2,7,8,9];
+const PLAYERS=[
+["Lucas Andrade","Atacante",82,28000000,1800000],["Matheus Oliveira","Meia",78,18000000,1200000],
+["Rafael Santos","Zagueiro",75,12000000,900000],["João Victor","Goleiro",80,22000000,1500000],
+["Gabriel Rocha","Volante",73,9000000,700000],["Pedro Henrique","Ponta",85,35000000,2300000],
+["Caio Martins","Lateral",77,15000000,950000],["Bruno Costa","Atacante",88,42000000,2800000],
+["André Lima","Zagueiro",81,25000000,1600000],["Felipe Alves","Meia",86,38000000,2400000]
+];
+const strengths={"Manager FC":76,"Flamengo":84,"Palmeiras":83,"São Paulo":79,"Corinthians":78,"Santos":75,"Vasco":76,"Fluminense":80,"Botafogo":81,"Grêmio":78,"Internacional":79,"Cruzeiro":76,"Atlético-MG":82,"Bahia":74,"Fortaleza":75,"Athletico-PR":76,"Bragantino":77,"Ceará":70,"Sport":69,"Mirassol":68};
+
+function money(n){return n.toLocaleString("pt-BR",{style:"currency",currency:"BRL",maximumFractionDigits:0})}
+function freshTable(){let t={}; CLUBS.forEach(c=>t[c]={p:0,j:0,v:0,e:0,d:0,sg:0,gp:0,ga:0}); return t}
+function buildSchedule(){
+ let a=CLUBS.slice(), first=[];
+ for(let r=0;r<19;r++){
+  let games=[];
+  for(let i=0;i<10;i++){let x=a[i],y=a[19-i]; games.push({home:r%2?y:x,away:r%2?x:y});}
+  first.push(games); a=[a[0],a[19],...a.slice(1,19)];
+ }
+ return first.concat(first.map(g=>g.map(x=>({home:x.away,away:x.home}))));
+}
+function fresh(){
+ return {day:1,month:1,round:0,monthly:0,decisionsDone:0,decisionDays:[],table:freshTable(),rounds:[],
+ balance:80000000,wage:9000000,morale:70,performance:76,fans:60,reputation:50,
+ wins:0,draws:0,losses:0,squad:['Carlos Henrique', 'Diego Alves', 'Eduardo Santos', 'Fernando Lima', 'Gustavo Rocha', 'Henrique Silva', 'Igor Martins', 'João Pedro', 'Lucas Mendes', 'Marcos Vinícius', 'Mateus Souza', 'Nicolas Oliveira', 'Otávio Costa', 'Paulo Henrique', 'Rafael Lima', 'Renan Ferreira', 'Samuel Santos', 'Thiago Almeida', 'Victor Hugo', 'Wesley Costa', 'André Souza', 'Bruno Henrique', 'Caio Eduardo'],logs:["Nova carreira iniciada. A tabela começa zerada."],schedule:buildSchedule()};
+}
+let sid=sessionStorage.getItem("managerfc_sid")||Math.random().toString(36).slice(2); sessionStorage.setItem("managerfc_sid",sid);
+let state=JSON.parse(sessionStorage.getItem("managerfc_v8_"+sid)||"null")||fresh();
+
+function save(){sessionStorage.setItem("managerfc_v8_"+sid,JSON.stringify(state))}
+function log(x){state.logs.unshift(x);state.logs=state.logs.slice(0,80)}
+function render(){
+ document.getElementById("stats").innerHTML=[
+ ["Data",`${state.day}/30 • ${MONTHS[state.month-1]}`],["Rodada",`${state.round}/38`],
+ ["Saldo",money(state.balance)],["Folha",money(state.wage)],
+ ["Moral",state.morale],["Desempenho",state.performance],["Torcida",state.fans],["Reputação",state.reputation]
+ ].map(x=>`<div class="card"><div class="label">${x[0]}</div><div class="value">${x[1]}</div></div>`).join("");
+ let games=GAME_DAYS[state.month], q=games.length;
+ let idx=state.monthly; let nd=idx<q?games[idx]:null;
+ document.getElementById("next").innerHTML=nd?`<b>Próxima rodada:</b> dia ${nd} de ${MONTHS[state.month-1]}.`:`<span class="muted">Rodadas do mês concluídas.</span>`;
+ document.getElementById("squad").innerHTML=state.squad.length?state.squad.map(n=>{let p=PLAYERS.find(x=>x[0]===n);return `<div class="fixture"><span><b>${p[0]}</b><br><span class="muted">${p[1]} • nível ${p[2]}</span></span><strong>${money(p[3])}</strong></div>`}).join(""):"<span class='muted'>Elenco inicial do Manager FC.</span>";
+ let rows=Object.entries(state.table).sort((a,b)=>(b[1].p-a[1].p)||(b[1].sg-a[1].sg)||(b[1].v-a[1].v));
+ document.getElementById("table").innerHTML=`<table><thead><tr><th>#</th><th>Clube</th><th>P</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th></tr></thead><tbody>${rows.map((r,i)=>`<tr class="${r[0]==='Manager FC'?'mine':''}"><td>${i+1}</td><td>${r[0]}</td><td>${r[1].p}</td><td>${r[1].j}</td><td>${r[1].v}</td><td>${r[1].e}</td><td>${r[1].d}</td><td>${r[1].sg}</td></tr>`).join("")}</tbody></table>`;
+ document.getElementById("log").innerHTML=state.logs.map(x=>`<p>${x}</p>`).join("");
+ let last=state.rounds[state.rounds.length-1];
+ document.getElementById("lastRound").innerHTML=last?`<h2>Última rodada — ${last.round}/38</h2>`+last.games.map(g=>`<div class="fixture"><span>${g.home} x ${g.away}</span><strong>${g.hg}–${g.ag}</strong></div>`).join(""):"";
+ document.getElementById("advanceBtn").disabled=state.round>=38;
+ save();
+}
+function score(a,b){
+ let baseA=(strengths[a]||70)+(a==="Manager FC"?state.performance-76:0)+(Math.random()*18-9);
+ let baseB=(strengths[b]||70)+(Math.random()*18-9);
+ let hg=Math.max(0,Math.round((baseA/28)*Math.random()*2.5));
+ let ag=Math.max(0,Math.round((baseB/28)*Math.random()*2.5));
+ return [Math.min(hg,6),Math.min(ag,6)];
+}
+function update(c,gf,ga){
+ let t=state.table[c];t.j++;t.gp+=gf;t.ga+=ga;t.sg=t.gp-t.ga;
+ if(gf>ga){t.v++;t.p+=3}else if(gf===ga)t.e++,t.p++;else t.d++;
+}
+function playRound(){
+ if(state.round>=38)return finish();
+ let expected=GAME_DAYS[state.month][state.monthly];
+ if(state.day!==expected){alert(`A rodada está marcada para o dia ${expected}. Avance os dias manualmente até lá.`);return}
+ let games=state.schedule[state.round], played=[];
+ for(const g of games){let [hg,ag]=score(g.home,g.away); update(g.home,hg,ag);update(g.away,ag,hg);played.push({...g,hg,ag})}
+ let mine=played.find(g=>g.home==="Manager FC"||g.away==="Manager FC");
+ let mgf=mine.home==="Manager FC"?mine.hg:mine.ag, mga=mine.home==="Manager FC"?mine.ag:mine.hg;
+ if(mgf>mga){state.wins++;state.morale+=2;state.performance+=1}else if(mgf===mga)state.draws++;else{state.losses++;state.morale-=2;state.performance-=1}
+ state.morale=Math.max(0,Math.min(100,state.morale));state.performance=Math.max(0,Math.min(100,state.performance));
+ state.round++;state.monthly++;
+ state.balance+=4000000+state.fans*100000+state.reputation*50000-state.wage;
+ log(`<b>Rodada ${state.round}/38:</b> Manager FC ${mgf}–${mga} • todos os 20 clubes tiveram seus jogos atualizados.`);
+ state.rounds.push({round:state.round,games:played});
+ render();
+ if(state.round>=38){finish();return}
+}
+function advanceDay(){
+ if(state.round>=38){finish();return}
+ let gameDay=GAME_DAYS[state.month].includes(state.day);
+ if(gameDay && state.monthly<GAME_DAYS[state.month].length){alert("Hoje há rodada. Jogue a rodada antes de avançar.");return}
+ if(state.day>=30){
+  if(state.monthly<GAME_DAYS[state.month].length){alert("Ainda há uma rodada deste mês para jogar.");return}
+  if(state.month===12){finish();return}
+  state.month++;state.day=1;state.monthly=0;state.decisionsDone=0;state.decisionDays=[];
+  log(`<b>${MONTHS[state.month-1]} começou.</b>`);
+ }else state.day++;
+ if(state.day%3===0 && !state.decisionDays.includes(state.day)){openDecision()}
+ render();
+}
+function openDecision(){
+ if(state.decisionDays.includes(state.day))return;
+ const transfer=TRANSFER_MONTHS.includes(state.month);
+ const pool=[
+  {t:"Clima no elenco",q:"O ambiente interno pede uma decisão.",ops:["Bônus coletivo de R$ 6 mi","Jantar do elenco por R$ 800 mil","Reunião de cobrança","Dia de folga","Prometer prêmio por título"],ef:[[-600000,15,3,0,0],[-800000,8,0,0,0],[0,-5,8,0,0],[0,10,-4,0,0],[-10000000,12,4,0,0]]},
+  {t:"Reforma do estádio",q:"A diretoria apresentou alternativas para o estádio.",ops:["Reforma completa por R$ 35 mi","Modernizar vestiários por R$ 8 mi","Ampliar setores populares por R$ 12 mi","Criar camarotes por R$ 18 mi","Não investir agora"],ef:[[-35000000,0,2,8,3],[-8000000,0,1,3,1],[-12000000,0,1,7,1],[-18000000,0,2,10,2],[0,0,0,0,0]]},
+  {t:"Categorias de base",q:"O clube precisa decidir quanto investir na formação.",ops:["Investir R$ 10 mi","Investir R$ 5 mi","Investir R$ 1 mi","Não investir","Vender direitos de jovens"],ef:[[-10000000,4,2,4,4],[-5000000,2,1,2,2],[-1000000,0,1,1,1],[0,0,0,0,0],[8000000,0,-2,-4,-2]]},
+  {t:"Patrocinador",q:"Um patrocinador apresentou diferentes modelos.",ops:["Contrato de R$ 12 mi","Contrato de R$ 20 mi","R$ 7 mi + bônus esportivo","R$ 28 mi com queda de torcida","Recusar"],ef:[[12000000,0,0,0,2],[20000000,0,0,0,4],[7000000,0,2,3,2],[28000000,0,0,-3,5],[0,0,0,0,0]]}
+ ];
+ if(transfer)pool.push({t:"Mercado de transferências",q:"Uma negociação de jogador chegou ao clube.",ops:["Comprar jogador de nível alto","Comprar opção de elenco","Recusar negócio","Pedir mais informações","Manter caixa para outra oportunidade"],ef:[[0,2,2,2,1],[0,1,1,1,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]]});
+ let d=pool[Math.floor(Math.random()*pool.length)];
+ document.getElementById("dTitle").textContent=d.t;
+ document.getElementById("dText").textContent=d.q+` — decisão ${state.decisionsDone+1}/10 do mês.`;
+ document.getElementById("opinions").innerHTML=[
+  ["Diretoria",["Priorizar caixa.","Investir pensando no futuro."][Math.random()*2|0]],
+  ["Comissão",["O desempenho precisa de atenção.","O elenco precisa de estabilidade."][Math.random()*2|0]],
+  ["Torcida",["Quer resultados imediatos.","Valoriza projeto de longo prazo."][Math.random()*2|0]],
+  ["Capitão",["O grupo precisa confiança.","É hora de cobrar mais."][Math.random()*2|0]],
+  ["Financeiro",["Evitar compromissos pesados.","Há margem para investir."][Math.random()*2|0]]
+ ].map(o=>`<div class="op"><b>${o[0]}</b>${o[1]}</div>`).join("");
+ const optionsBox=document.getElementById("options");
+ optionsBox.innerHTML="";
+ d.ops.forEach((op,i)=>{
+   const btn=document.createElement("button");
+   btn.type="button";
+   btn.className="choice";
+   btn.textContent=`${i+1}. ${op}`;
+   btn.addEventListener("click",()=>chooseDecision(d.ef[i],op),{once:true});
+   optionsBox.appendChild(btn);
+ });
+ document.getElementById("decisionModal").classList.add("show");
+}
+function chooseDecision(ef,op){
+ state.balance+=ef[0];state.morale+=ef[1];state.performance+=ef[2];state.fans+=ef[3];state.reputation+=ef[4];
+ state.morale=Math.max(0,Math.min(100,state.morale));state.performance=Math.max(0,Math.min(100,state.performance));state.fans=Math.max(0,Math.min(100,state.fans));state.reputation=Math.max(0,Math.min(100,state.reputation));
+ state.decisionsDone++;state.decisionDays.push(state.day);log(`<b>Decisão:</b> ${op}`);document.getElementById("decisionModal").classList.remove("show");render();
+}
+function showCareer(){
+ if(state.round<38){alert("O resumo final aparece após a 38ª rodada.");return}
+ finish();
+}
+function finish(){
+ if(state.round<38)return;
+ document.getElementById("careerText").innerHTML=`<p><b>Temporada concluída.</b></p><p>Rodadas: ${state.round}/38<br>Vitórias: ${state.wins} • Empates: ${state.draws} • Derrotas: ${state.losses}<br>Saldo final: ${money(state.balance)}</p>`;
+ document.getElementById("careerModal").classList.add("show");
+}
+function resetGame(){
+ if(!confirm("Começar uma nova carreira? A carreira desta sessão será substituída."))return;
+ state=fresh();save();document.getElementById("careerModal").classList.remove("show");render();
+}
+render();
+if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js");
+</script>
+</body>
+</html>
